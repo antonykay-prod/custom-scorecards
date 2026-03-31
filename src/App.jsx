@@ -117,6 +117,7 @@ export default function App() {
   const [libraryQs, setLibraryQs]   = useState(INITIAL_LIBRARY);
   const [tab, setTab]               = useState("new");
   const [newText, setNewText]       = useState("");
+  const [newType, setNewType]       = useState("boolean"); // 'boolean' or 'scored'
   const [mounted, setMounted]       = useState(false);
   const taRef = useRef(null);
 
@@ -135,7 +136,7 @@ export default function App() {
     const t = newText.trim();
     if (!t || addBlocked) return;
     const target = scMode === "customAll" ? "Unified" : activeType;
-    setCards(p => ({ ...p, [target]: [...p[target], { id: mkId(), text: t, custom: true }] }));
+    setCards(p => ({ ...p, [target]: [...p[target], { id: mkId(), text: t, type: newType, custom: true }] }));
     
     // Requirement: New custom questions should show in library
     if (!libraryQs.includes(t)) {
@@ -150,7 +151,7 @@ export default function App() {
     const target = scMode === "customAll" ? "Unified" : activeType;
     const targetQs = cards[target] || [];
     if (addBlocked || targetQs.find(q => q.text === text)) return;
-    setCards(p => ({ ...p, [target]: [...p[target], { id: mkId(), text, custom: false }] }));
+    setCards(p => ({ ...p, [target]: [...p[target], { id: mkId(), text, type: 'boolean', custom: false }] }));
   };
 
   const remove = (id) => {
@@ -370,7 +371,13 @@ export default function App() {
                             <div style={{ width: 36, height: 36, borderRadius: 12, background: q.custom ? "var(--primary-light)" : "var(--gray-100)", color: q.custom ? "var(--primary)" : "var(--dark)", fontSize: 14, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</div>
                             <div style={{ flex: 1 }}>
                               <div style={{ fontSize: 15, color: "var(--dark-accent)", fontWeight: 700, lineHeight: 1.5 }}>{q.text}</div>
-                              <div style={{ fontSize: 11, color: "var(--gray-400)", fontWeight: 700, marginTop: 4, letterSpacing: "0.02em" }}>{q.custom ? "CUSTOM PRACTICE LOGIC" : "ADIT QUALITY STANDARD"}</div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
+                                <div style={{ fontSize: 11, color: "var(--gray-400)", fontWeight: 700, letterSpacing: "0.02em" }}>{q.custom ? "CUSTOM PRACTICE LOGIC" : "ADIT QUALITY STANDARD"}</div>
+                                <div style={{ width: 4, height: 4, background: "var(--gray-300)", borderRadius: "50%" }} />
+                                <div style={{ fontSize: 10, fontWeight: 800, color: q.type === "scored" ? "#21aae0" : "var(--primary)", background: q.type === "scored" ? "rgba(33, 170, 224, 0.1)" : "var(--primary-faded)", padding: "2px 8px", borderRadius: 6, textTransform: "uppercase" }}>
+                                  {q.type === "scored" ? "0 - 5 Score" : "Yes / No"}
+                                </div>
+                              </div>
                             </div>
                             <button onClick={() => remove(q.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--gray-300)", transition: ".2s", "&:hover": { color: "var(--red)" } }}>
                               <Ico path="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" size={18} />
@@ -409,10 +416,33 @@ export default function App() {
                   <div style={{ flex: 1, overflowY: "auto", padding: "0 32px 32px" }}>
                     {tab === "new" ? (
                       <div className="animate-fade-in" style={{ paddingTop: 24 }}>
+                        <div style={{ fontSize: 11, fontWeight: 800, color: "var(--gray-400)", marginBottom: 12, letterSpacing: "0.05em" }}>QUESTION TYPE</div>
+                        
+                        <div style={{ display: "flex", gap: 12, marginBottom: 24 }}>
+                          {[
+                            { id: "boolean", l: "Yes / No", d: "Binary response", icon: "M5 13l4 4L19 7" },
+                            { id: "scored", l: "Scored (0-5)", d: "Numerical rating", icon: "M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" }
+                          ].map(t => (
+                            <div key={t.id} onClick={() => setNewType(t.id)}
+                              style={{ 
+                                flex: 1, padding: "16px", borderRadius: 20, border: newType === t.id ? "2px solid var(--primary)" : "2px solid var(--border)",
+                                background: newType === t.id ? "var(--primary-light)" : "var(--white)", cursor: "pointer", transition: ".2s"
+                              }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                                <div style={{ width: 24, height: 24, borderRadius: 8, background: newType === t.id ? "var(--primary)" : "var(--gray-100)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                  <Ico path={t.icon} size={14} stroke={newType === t.id ? "#fff" : "var(--gray-400)"} sw={3} />
+                                </div>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: newType === t.id ? "var(--primary)" : "var(--dark-accent)" }}>{t.l}</div>
+                              </div>
+                              <div style={{ fontSize: 11, color: "var(--gray-500)", fontWeight: 500 }}>{t.d}</div>
+                            </div>
+                          ))}
+                        </div>
+
                         <div style={{ fontSize: 11, fontWeight: 800, color: "var(--gray-400)", marginBottom: 10, letterSpacing: "0.05em" }}>DEFINE NEW CRITERIA</div>
                         <textarea ref={taRef} value={newText} onChange={e => setNewText(e.target.value)}
-                          disabled={addBlocked} placeholder="Type evaluation criteria... (e.g. 'Did agent verify insurance info?')"
-                          style={{ width: "100%", border: "2.5px solid var(--border)", borderRadius: 20, padding: "20px", fontSize: 15, color: "var(--dark-accent)", outline: "none", resize: "none", minHeight: 140, background: "var(--gray-50)", transition: ".3s", "&:focus": { borderColor: "var(--primary)", background: "#fff" }, fontWeight: 600, lineHeight: 1.5 }} />
+                          disabled={addBlocked} placeholder="Type evaluation criteria... (e.g. 'How professional was the tone?')"
+                          style={{ width: "100%", border: "2.5px solid var(--border)", borderRadius: 20, padding: "20px", fontSize: 15, color: "var(--dark-accent)", outline: "none", resize: "none", minHeight: 120, background: "var(--gray-50)", transition: ".3s", "&:focus": { borderColor: "var(--primary)", background: "#fff" }, fontWeight: 600, lineHeight: 1.5 }} />
                         <button onClick={doAdd} disabled={addBlocked || !newText.trim()} className="btn-primary" style={{ width: "100%", marginTop: 20, padding: "18px", borderRadius: 16, fontSize: 15, fontWeight: 700 }}>Add To Scorecard</button>
                       </div>
                     ) : (
