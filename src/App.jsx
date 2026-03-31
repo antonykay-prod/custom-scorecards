@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from "react";
 const CALL_TYPES = ["Billing", "Clinical", "Confirmations", "Emergency", "Incomplete", "Insurance", "Others", "Product Order", "Recare", "Rescheduling", "Scheduling", "Vendor", "Verifications"];
 const MAX_PER_CARD = 10;
 const MAX_TOTAL = 45;
-const EXISTING_QS = [
+const INITIAL_LIBRARY = [
   "Did the agent greet the caller professionally?",
   "Was the caller's concern resolved in the first call?",
   "Did the agent confirm the patient's details correctly?",
@@ -108,8 +108,13 @@ export default function App() {
   const [taskMode, setTaskMode]     = useState("user");
   const [scMode, setScMode]         = useState("adit");
   const [modalOpen, setModalOpen]   = useState(false);
-  const [cards, setCards]           = useState(() => Object.fromEntries(CALL_TYPES.map(t => [t, []])));
+  const [cards, setCards]           = useState(() => {
+    const init = Object.fromEntries(CALL_TYPES.map(t => [t, []]));
+    init["Unified"] = [];
+    return init;
+  });
   const [activeType, setActiveType] = useState(CALL_TYPES[0]);
+  const [libraryQs, setLibraryQs]   = useState(INITIAL_LIBRARY);
   const [tab, setTab]               = useState("new");
   const [newText, setNewText]       = useState("");
   const [mounted, setMounted]       = useState(false);
@@ -117,28 +122,41 @@ export default function App() {
 
   useEffect(() => { setMounted(true); }, []);
 
-  const total      = Object.values(cards).reduce((s, qs) => s + qs.length, 0);
-  const cardQs     = cards[activeType] || [];
-  const atCard     = cardQs.length >= MAX_PER_CARD;
-  const atTotal    = total >= MAX_TOTAL;
-  const addBlocked = atCard || atTotal;
-  const pct        = Math.min((total / MAX_TOTAL) * 100, 100);
-  const barColor   = total >= MAX_TOTAL ? "var(--red)" : total >= 38 ? "var(--primary)" : "var(--green)";
+  const total         = Object.values(cards).reduce((s, qs) => s + qs.length, 0);
+  const currentTarget = scMode === "customAll" ? "Unified" : activeType;
+  const cardQs        = cards[currentTarget] || [];
+  const atCard        = cardQs.length >= MAX_PER_CARD;
+  const atTotal       = total >= MAX_TOTAL;
+  const addBlocked    = atCard || atTotal;
+  const pct           = Math.min((total / MAX_TOTAL) * 100, 100);
+  const barColor      = total >= MAX_TOTAL ? "var(--red)" : total >= 38 ? "var(--primary)" : "var(--green)";
 
   const doAdd = () => {
     const t = newText.trim();
     if (!t || addBlocked) return;
-    setCards(p => ({ ...p, [activeType]: [...p[activeType], { id: mkId(), text: t, custom: true }] }));
+    const target = scMode === "customAll" ? "Unified" : activeType;
+    setCards(p => ({ ...p, [target]: [...p[target], { id: mkId(), text: t, custom: true }] }));
+    
+    // Requirement: New custom questions should show in library
+    if (!libraryQs.includes(t)) {
+      setLibraryQs(p => [t, ...p]);
+    }
+
     setNewText("");
     setTimeout(() => taRef.current?.focus(), 50);
   };
 
   const addExisting = (text) => {
-    if (addBlocked || cardQs.find(q => q.text === text)) return;
-    setCards(p => ({ ...p, [activeType]: [...p[activeType], { id: mkId(), text, custom: false }] }));
+    const target = scMode === "customAll" ? "Unified" : activeType;
+    const targetQs = cards[target] || [];
+    if (addBlocked || targetQs.find(q => q.text === text)) return;
+    setCards(p => ({ ...p, [target]: [...p[target], { id: mkId(), text, custom: false }] }));
   };
 
-  const remove = (id) => setCards(p => ({ ...p, [activeType]: p[activeType].filter(q => q.id !== id) }));
+  const remove = (id) => {
+    const target = scMode === "customAll" ? "Unified" : activeType;
+    setCards(p => ({ ...p, [target]: p[target].filter(q => q.id !== id) }));
+  };
 
   if (!mounted) return null;
 
@@ -239,9 +257,11 @@ export default function App() {
                 label="Unified Custom Score Card"
                 desc="Maintain consistent clinical and service standards across all patient communication types." />
             </div>
-            <BtnPrimary onClick={() => setModalOpen(true)} icon="M9 12h6m-6 4h4M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2">
-              Manage Score Card Logic
-            </BtnPrimary>
+            {scMode !== "adit" && (
+              <BtnPrimary onClick={() => setModalOpen(true)} icon="M9 12h6m-6 4h4M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2">
+                Manage Score Card Logic
+              </BtnPrimary>
+            )}
           </Row>
         </Section>
 
@@ -259,50 +279,52 @@ export default function App() {
             boxShadow: "0 50px 120px rgba(0,0,0,0.4)"
           }}>
 
-            {/* Pane 1: The Category Sidebar */}
-            <div style={{ width: 280, background: "var(--dark)", display: "flex", flexDirection: "column", flexShrink: 0 }}>
-              <div style={{ padding: "32px 24px" }}>
-                <div className="outfit" style={{ color: "#fff", fontSize: 22, fontWeight: 800 }}>Practice Logic</div>
-                <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13, marginTop: 4, fontWeight: 500 }}>Call Scenarios</div>
-              </div>
+            {/* Pane 1: The Category Sidebar (Conditional) */}
+            {scMode === "customByType" && (
+              <div style={{ width: 280, background: "var(--dark)", display: "flex", flexDirection: "column", flexShrink: 0 }}>
+                <div style={{ padding: "32px 24px" }}>
+                  <div className="outfit" style={{ color: "#fff", fontSize: 22, fontWeight: 800 }}>Practice Logic</div>
+                  <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13, marginTop: 4, fontWeight: 500 }}>Call Scenarios</div>
+                </div>
 
-              <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 20px" }}>
-                {CALL_TYPES.map(t => {
-                  const cnt = cards[t].length;
-                  const active = t === activeType;
-                  return (
-                    <div key={t} onClick={() => setActiveType(t)}
-                      style={{ 
-                        padding: "12px 16px", borderRadius: 16, marginBottom: 4, cursor: "pointer",
-                        display: "flex", alignItems: "center", justifyContent: "space-between",
-                        background: active ? "var(--primary)" : "transparent",
-                        transition: "0.25s cubic-bezier(0.4, 0, 0.2, 1)",
-                        transform: active ? "scale(1.02)" : "scale(1)"
-                      }}>
-                      <span style={{ color: active ? "#fff" : "rgba(255,255,255,0.6)", fontSize: 14, fontWeight: active ? 700 : 500 }}>{t}</span>
-                      {cnt > 0 && (
-                        <span style={{ 
-                          background: active ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.08)", 
-                          color: "#fff", borderRadius: 8, fontSize: 11, fontWeight: 800, padding: "2px 8px" 
-                        }}>{cnt}</span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 20px" }}>
+                  {CALL_TYPES.map(t => {
+                    const cnt = cards[t].length;
+                    const active = t === activeType;
+                    return (
+                      <div key={t} onClick={() => setActiveType(t)}
+                        style={{ 
+                          padding: "12px 16px", borderRadius: 16, marginBottom: 4, cursor: "pointer",
+                          display: "flex", alignItems: "center", justifyContent: "space-between",
+                          background: active ? "var(--primary)" : "transparent",
+                          transition: "0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+                          transform: active ? "scale(1.02)" : "scale(1)"
+                        }}>
+                        <span style={{ color: active ? "#fff" : "rgba(255,255,255,0.6)", fontSize: 14, fontWeight: active ? 700 : 500 }}>{t}</span>
+                        {cnt > 0 && (
+                          <span style={{ 
+                            background: active ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.08)", 
+                            color: "#fff", borderRadius: 8, fontSize: 11, fontWeight: 800, padding: "2px 8px" 
+                          }}>{cnt}</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
 
-              <div style={{ padding: "20px 24px", borderTop: "1px solid rgba(255,255,255,0.1)" }}>
-                <div style={{ background: "rgba(255,255,255,0.05)", borderRadius: 16, padding: "16px" }}>
-                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", fontWeight: 800, letterSpacing: "0.05em", marginBottom: 8 }}>PRACTICE CAPACITY</div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "space-between" }}>
-                    <div style={{ height: 6, flex: 1, background: "rgba(255,255,255,0.1)", borderRadius: 3 }}>
-                      <div style={{ width: pct + "%", height: "100%", background: barColor, borderRadius: 3 }} />
+                <div style={{ padding: "20px 24px", borderTop: "1px solid rgba(255,255,255,0.1)" }}>
+                  <div style={{ background: "rgba(255,255,255,0.05)", borderRadius: 16, padding: "16px" }}>
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", fontWeight: 800, letterSpacing: "0.05em", marginBottom: 8 }}>PRACTICE CAPACITY</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "space-between" }}>
+                      <div style={{ height: 6, flex: 1, background: "rgba(255,255,255,0.1)", borderRadius: 3 }}>
+                        <div style={{ width: pct + "%", height: "100%", background: barColor, borderRadius: 3 }} />
+                      </div>
+                      <span style={{ color: "#fff", fontSize: 12, fontWeight: 700 }}>{total}/{MAX_TOTAL}</span>
                     </div>
-                    <span style={{ color: "#fff", fontSize: 12, fontWeight: 700 }}>{total}/{MAX_TOTAL}</span>
                   </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Pane 2 & 3 Container */}
             <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--bg)" }}>
@@ -338,6 +360,8 @@ export default function App() {
                     <div style={{ fontSize: 12, color: cardQs.length >= MAX_PER_CARD ? "var(--red)" : "var(--gray-500)", fontWeight: 800 }}>{cardQs.length} / {MAX_PER_CARD} SLOTS</div>
                   </div>
 
+                  {!atCard && atTotal && <Warn msg={`Overall practice limit of ${MAX_TOTAL} questions has been reached.`} />}
+                  
                   {cardQs.length === 0
                     ? <Empty />
                     : <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -395,10 +419,10 @@ export default function App() {
                       <div className="animate-fade-in" style={{ paddingTop: 24 }}>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
                           <div style={{ fontSize: 11, fontWeight: 800, color: "var(--gray-400)", letterSpacing: "0.05em" }}>SUGGESTED STANDARDS</div>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: "var(--primary)" }}>{EXISTING_QS.length} Available</span>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: "var(--primary)" }}>{libraryQs.length} Available</span>
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                          {EXISTING_QS.map(q => {
+                          {libraryQs.map(q => {
                             const added = !!cardQs.find(c => c.text === q);
                             return (
                               <div key={q} onClick={() => !added && addExisting(q)}
